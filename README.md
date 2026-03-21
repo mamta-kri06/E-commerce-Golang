@@ -11,7 +11,7 @@ Users can browse products, manage a wishlist and cart, checkout via payments, an
 - **Products:** View all products with images, price, stock, and category.  
 - **Wishlist:** Add/remove items with ❤️ toggle.  
 - **Cart:** Add items to cart, update quantities, remove items.  
-- **Checkout & Payment:** Integrated with **Razorpay/Stripe/PayPal**.  
+- **Checkout & Payment:** Integrated with **Razorpay**
 - **Order History:** Track past orders with timestamps and status.  
 - **Product Filters & Search:** Filter by category, price, or availability.  
 
@@ -26,10 +26,9 @@ Users can browse products, manage a wishlist and cart, checkout via payments, an
 
 - **Frontend:** React.js, Tailwind CSS, React Router, Context API  
 - **Backend:** Go (Gin framework), GORM ORM  
-- **Database:** PostgreSQL / MySQL  
+- **Database:** PostgreSQL 
 - **Authentication:** JWT-based  
 - **Payment Integration:** Razorpay 
 - **Deployment:** Backend on Render, Frontend on Vercel  
 
 
-## ⚙️ Project Structure
