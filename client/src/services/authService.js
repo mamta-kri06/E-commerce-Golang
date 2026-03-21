@@ -1,5 +1,4 @@
-const API_BASE_URL = 'http://localhost:8080/api'; // Update this to match your Go server port with /api prefix
-
+const API_BASE_URL = 'https://e-commerce-golang.onrender.com/api';
 export const authService = {
   async signup(name, email, password) {
     try {
