@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL;
+const API_BASE_URL ='https://e-commerce-golang.onrender.com/api'
 
 export const productService = {
   async getAllProducts() {
