@@ -53,6 +53,7 @@ func ConnectDB() (*gorm.DB, error) {
 		&models.OrderItem{},
 		&models.Review{},
 		&models.WishlistItem{},
+		&models.Address{},
 	); err != nil {
 		return nil, err
 	}

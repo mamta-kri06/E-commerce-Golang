@@ -117,6 +117,22 @@ const MyOrders = () => {
           <div className="space-y-8">
             {orders.map((order) => (
               <div key={order.id} className="bg-white rounded-3xl border border-gray-100 shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
+                {order.address && order.address.addressLine1 && (
+  <div className="px-8 py-4 bg-gray-50 border-b border-gray-100">
+    <p className="text-xs font-bold text-gray-400 uppercase mb-1">
+      Delivery Address
+    </p>
+    <p className="text-sm font-bold text-gray-900">
+      {order.address?.name || 'N/A'} ({order.address?.phone || 'N/A'})
+    </p>
+    <p className="text-sm text-gray-700">
+      {order.address?.addressLine1 || 'N/A'}
+    </p>
+    <p className="text-sm text-gray-700">
+      {order.address?.city || 'N/A'}, {order.address?.state || 'N/A'} - {order.address?.pincode || 'N/A'}
+    </p>
+  </div>
+)}
                 {/* Order Header */}
                 <div className="bg-gray-50/50 px-8 py-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex gap-8">

@@ -1,16 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import { Link, useNavigate } from 'react-router-dom';
+import { addressService } from '../services/addressService';
 
 const CartPage = () => {
   const { cart, removeFromCart, updateQuantity, clearCart, cartTotal } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [step, setStep] = useState("cart"); // cart | address
+  const [selectedAddress, setSelectedAddress] = useState(null);
+  const [addresses, setAddresses] = useState([]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      addressService.getAddresses().then(setAddresses);
+    }
+  }, [isAuthenticated]);
 
   const handleCheckout = async () => {
+    if (!selectedAddress) {
+      alert("Please select address");
+      return;
+    }
     if (!isAuthenticated) {
       navigate('/login');
       return;
@@ -19,14 +33,13 @@ const CartPage = () => {
     setIsProcessing(true);
     try {
       const token = localStorage.getItem('token');
-      
-      // 1. Create order in backend
       const response = await fetch('http://localhost:8080/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        }
+        },
+        body: JSON.stringify({ addressId: selectedAddress.id })
       });
 
       const data = await response.json();
@@ -34,7 +47,6 @@ const CartPage = () => {
 
       const { razorpay_order_id, razorpay_key_id, amount } = data;
 
-      // 2. Configure Razorpay options
       const options = {
         key: razorpay_key_id,
         amount: amount,
@@ -42,8 +54,7 @@ const CartPage = () => {
         name: 'ShopHub',
         description: 'Order Payment',
         order_id: razorpay_order_id,
-        handler: async function (response) {
-          // 3. Verify payment in backend
+        handler: async (response) => {
           try {
             const verifyResponse = await fetch('http://localhost:8080/api/orders/verify-payment', {
               method: 'POST',
@@ -57,31 +68,20 @@ const CartPage = () => {
                 razorpay_signature: response.razorpay_signature
               })
             });
-
             const verifyData = await verifyResponse.json();
             if (!verifyResponse.ok) throw new Error(verifyData.error || 'Payment verification failed');
 
-            // 4. Success! Clear cart and redirect
             clearCart();
             alert('Payment successful! Your order has been placed.');
-            navigate('/dashboard'); // or /orders
+            navigate('/my-orders');
           } catch (error) {
             console.error('Verification error:', error);
             alert('Payment verification failed. Please contact support.');
           }
         },
-        prefill: {
-          name: user.name,
-          email: user.email,
-        },
-        theme: {
-          color: '#4F46E5', // Indigo-600
-        },
-        modal: {
-          ondismiss: function() {
-            setIsProcessing(false);
-          }
-        }
+        prefill: { name: user.name, email: user.email },
+        theme: { color: '#4F46E5' },
+        modal: { ondismiss: () => setIsProcessing(false) }
       };
 
       const rzp = new window.Razorpay(options);
@@ -115,47 +115,54 @@ const CartPage = () => {
 
   return (
     <Layout>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 items-start">
-        {/* Cart Items */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Your Cart</h1>
-            <button onClick={clearCart} className="text-sm font-bold text-red-600 hover:text-red-700 transition-colors">
-              Clear Cart
+      <div className={`grid gap-12 items-start ${step === "address" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1 lg:grid-cols-3"}`}>
+
+        {/* Left Column */}
+        {step === "cart" && (
+          <div className="lg:col-span-2 space-y-6">
+            <div className="flex items-center justify-between">
+              <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Your Cart</h1>
+              <button onClick={clearCart} className="text-sm font-bold text-red-600 hover:text-red-700 transition-colors">
+                Clear Cart
+              </button>
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-100">
+              {cart.map(item => (
+                <div key={item.id} className="flex items-center p-6 gap-6">
+                  <img src={item.imageUrl || 'https://via.placeholder.com/150'} alt={item.name} className="w-24 h-24 rounded-xl object-cover" />
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg text-gray-900">{item.name}</h3>
+                    <p className="text-sm text-gray-500">
+                      <span className="font-bold text-gray-400 mr-1">{item.currency === 'INR' || !item.currency ? '₹' : item.currency}</span>
+                      {(item.pricePaise / 100).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="flex items-center border border-gray-200 rounded-xl p-1">
+                    <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-3 py-1 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">-</button>
+                    <span className="px-3 font-bold text-gray-900">{item.quantity}</span>
+                    <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="px-3 py-1 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">+</button>
+                  </div>
+                  <p className="font-extrabold text-lg text-gray-900">
+                    <span className="text-sm font-bold text-gray-400 mr-1">{item.currency === 'INR' || !item.currency ? '₹' : item.currency}</span>
+                    {((item.pricePaise / 100) * item.quantity).toFixed(2)}
+                  </p>
+                  <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-600 transition-colors p-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setStep("address")} disabled={isProcessing} className="w-full mt-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5">
+              {isProcessing ? 'Processing...' : 'Proceed to Checkout'}
             </button>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-100">
-            {cart.map((item) => (
-              <div key={item.id} className="flex items-center p-6 gap-6">
-                <img src={item.imageUrl || 'https://via.placeholder.com/150'} alt={item.name} className="w-24 h-24 rounded-xl object-cover" />
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">{item.name}</h3>
-                  <p className="text-sm text-gray-500">
-                    <span className="font-bold text-gray-400 mr-1">{item.currency === 'INR' || !item.currency ? '₹' : item.currency}</span>
-                    {(item.pricePaise / 100).toFixed(2)}
-                  </p>
-                </div>
-                <div className="flex items-center border border-gray-200 rounded-xl p-1">
-                  <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-3 py-1 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">-</button>
-                  <span className="px-3 font-bold text-gray-900">{item.quantity}</span>
-                  <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="px-3 py-1 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">+</button>
-                </div>
-                <p className="font-extrabold text-lg text-gray-900">
-                  <span className="text-sm font-bold text-gray-400 mr-1">{item.currency === 'INR' || !item.currency ? '₹' : item.currency}</span>
-                  {((item.pricePaise / 100) * item.quantity).toFixed(2)}
-                </p>
-                <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-600 transition-colors p-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
 
-        {/* Order Summary */}
-        <div className="lg:col-span-1 sticky top-28">
+        {/* Right Column */}
+        <div className="lg:col-span-1 sticky top-28 space-y-6">
+          {/* Order Summary */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-6">
             <h2 className="text-xl font-bold text-gray-900">Order Summary</h2>
             <div className="space-y-3">
@@ -178,14 +185,36 @@ const CartPage = () => {
                 <span>₹{((cartTotal / 100) + 40 + (cartTotal / 100) * 0.18).toFixed(2)}</span>
               </div>
             </div>
-            <button 
-              onClick={handleCheckout}
-              disabled={isProcessing}
-              className={`w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              {isProcessing ? 'Processing...' : 'Proceed to Checkout'}
-            </button>
           </div>
+
+          {/* Address Selection */}
+          {step === "address" && (
+            <div className="bg-white p-6 rounded-xl shadow">
+              <h2 className="text-xl font-bold mb-4 text-black">Select Delivery Address</h2>
+              {addresses.length === 0 ? (
+                <p>No address found. Please add one in profile.</p>
+              ) : (
+                <div className="space-y-3">
+                  {addresses.map(addr => (
+                    <div key={addr.id} onClick={() => setSelectedAddress(addr)}
+                      className={`border p-4 rounded cursor-pointer ${selectedAddress?.id === addr.id ? "border-indigo-600" : ""}`}>
+                      <p className="font-bold text-black">{addr.name}</p>
+                      <p className="font-bold text-black">{addr.phone}</p>
+                      <p className="font-bold text-black">{addr.addressLine1}</p>
+                      <p className="font-bold text-black">{addr.city}, {addr.state} - {addr.pincode}</p>
+                      {addr.isDefault && <span className="text-green-600 text-sm">Default</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button disabled={!selectedAddress} onClick={handleCheckout} className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded w-full">
+                Continue to Payment →
+              </button>
+              <button onClick={() => setStep("cart")} className="mt-2 text-sm text-indigo-600 font-bold flex items-center gap-2">
+                ← Back to Cart
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </Layout>

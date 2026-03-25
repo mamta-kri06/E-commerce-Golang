@@ -14,4 +14,5 @@ func RegisterRoutes(api *gin.RouterGroup, db *gorm.DB) {
 	RegisterDashboardRoutes(api, db)
 	RegisterReviewRoutes(api, db)
 	RegisterWishlistRoutes(api, db)
+	RegisterAddressRoutes(api, db)
 }

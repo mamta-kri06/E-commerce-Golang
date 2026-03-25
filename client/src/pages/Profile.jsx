@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { userService } from '../services/userService';
+import { getCurrentAddress } from '../utils/location';
+import { addressService } from '../services/addressService';
 import Layout from '../components/Layout';
 
 const Profile = () => {
@@ -10,6 +12,18 @@ const Profile = () => {
     password: '',
     confirmPassword: '',
   });
+
+  const [addresses, setAddresses] = useState([]);
+  const [newAddress, setNewAddress] = useState({
+    name: '',
+    phone: '',
+    addressLine1: '',
+    city: '',
+    state: '',
+    pincode: '',
+    isDefault: false,
+  });
+  const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -22,7 +36,7 @@ const Profile = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (formData.password && formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -36,11 +50,11 @@ const Profile = () => {
       }
 
       const response = await userService.updateProfile(updateData);
-      
+
       // Update local auth context with new user data
       const token = localStorage.getItem('token');
       login(response.user, token);
-      
+
       setSuccess('Profile updated successfully!');
       setFormData({ ...formData, password: '', confirmPassword: '' });
     } catch (err) {
@@ -50,6 +64,73 @@ const Profile = () => {
     }
   };
 
+  useEffect(() => {
+    loadAddresses();
+  }, []);
+
+  const loadAddresses = async () => {
+    try {
+      const data = await addressService.getAddresses();
+      console.log(data)
+      setAddresses(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  const handleAddAddress = async () => {
+    try {
+      await addressService.addAddress(newAddress);
+      setNewAddress({
+        name: '',
+        phone: '',
+        addressLine1: '',
+        city: '',
+        state: '',
+        pincode: '',
+        isDefault: false,
+      });
+      loadAddresses();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  const handleDelete = async (id) => {
+    try {
+      await addressService.deleteAddress(id);
+      loadAddresses();
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
+  };
+  const handleUpdate = async () => {
+    await addressService.updateAddress(editingId, newAddress);
+     setNewAddress({
+        name: '',
+        phone: '',
+        addressLine1: '',
+        city: '',
+        state: '',
+        pincode: '',
+        isDefault: false,
+      });
+    setEditingId(null);
+    loadAddresses();
+  };
+
+  const handleAutoFillAddress = async () => {
+  try {
+    const locationData = await getCurrentAddress();
+
+    setNewAddress((prev) => ({
+      ...prev,
+      ...locationData,
+    }));
+
+  } catch (err) {
+    console.error(err);
+    alert(err);
+  }
+};
   return (
     <Layout>
       <div className="max-w-2xl mx-auto py-10 px-4">
@@ -65,7 +146,7 @@ const Profile = () => {
                 <circle cx="90" cy="90" r="2" fill="white" />
               </svg>
             </div>
-            
+
             <div className="relative z-10">
               <div className="w-24 h-24 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white/30 text-4xl">
                 {user?.name?.charAt(0).toUpperCase() || '👤'}
@@ -148,6 +229,89 @@ const Profile = () => {
               {loading ? 'Updating...' : 'Save Changes'}
             </button>
           </form>
+        </div>
+      </div>
+      <div className="mt-10">
+        <h2 className="text-xl font-bold mb-4">My Addresses</h2>
+
+        {/* Add Address Form */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <input placeholder="Name" value={newAddress.name}
+            onChange={(e) => setNewAddress({ ...newAddress, name: e.target.value })} />
+
+          <input placeholder="Phone" value={newAddress.phone}
+            onChange={(e) => setNewAddress({ ...newAddress, phone: e.target.value })} />
+
+          <input placeholder="Address Line"
+            value={newAddress.addressLine1}
+            onChange={(e) => setNewAddress({ ...newAddress, addressLine1: e.target.value })} />
+
+          <input placeholder="City"
+            value={newAddress.city}
+            onChange={(e) => setNewAddress({ ...newAddress, city: e.target.value })} />
+
+          <input placeholder="State"
+            value={newAddress.state}
+            onChange={(e) => setNewAddress({ ...newAddress, state: e.target.value })} />
+
+          <input placeholder="Pincode"
+            value={newAddress.pincode}
+            onChange={(e) => setNewAddress({ ...newAddress, pincode: e.target.value })} />
+        </div>
+
+        <button
+          onClick={editingId ? handleUpdate : handleAddAddress}
+          className="bg-indigo-600 text-white px-4 py-2 rounded"
+        >
+          {editingId ? "Update Address" : "Add Address"}
+        </button>
+<button
+  onClick={handleAutoFillAddress}
+  className="bg-green-600 text-white px-4 py-2 rounded mb-3 p-4"
+>
+  📍 Use Current Location
+</button>
+        {/* Address List */}
+        <div className="mt-6 space-y-3">
+          {addresses.map((addr) => (
+            <div key={addr.id} className="border p-4 rounded">
+              <p className="font-bold">{addr.name}</p>
+              <p> {addr.phone}</p>
+              <p>{addr.addressLine1}</p>
+              <p>{addr.city}, {addr.state} - {addr.pincode}</p>
+
+              {addr.isDefault && (
+                <span className="text-green-600 text-sm">Default</span>
+              )}
+
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    setEditingId(addr.id);
+                    setNewAddress({
+                      name: addr.name,
+                      phone: addr.phone,
+                      addressLine1: addr.addressLine1,
+                      city: addr.city,
+                      state: addr.state,
+                      pincode: addr.pincode,
+                      isDefault: addr.isDefault,
+                    });
+                  }}
+                  className="bg-yellow-500 text-white px-2 py-1 rounded"
+                >
+                  Edit
+                </button>
+
+                <button
+                  onClick={() => handleDelete(addr.id)}
+                  className="bg-red-500 text-white px-2 py-1 rounded"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </Layout>

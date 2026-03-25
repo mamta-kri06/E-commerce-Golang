@@ -11,6 +11,9 @@ type Order struct {
 	UserID uint `gorm:"not null;index" json:"userId"`
 	User   User `gorm:"foreignKey:UserID" json:"user"`
 
+	AddressID *uint   `json:"addressId"`
+	Address   Address `gorm:"foreignKey:AddressID" json:"address"`
+
 	Status     string `gorm:"not null;default:'pending'" json:"status"` // e.g., pending, completed, cancelled
 	TotalPaise int64  `gorm:"not null;default:0" json:"totalPaise"`
 

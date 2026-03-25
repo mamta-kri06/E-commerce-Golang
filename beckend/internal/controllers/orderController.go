@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/smtp"
 	"os"
 
 	"github.com/jung-kurt/gofpdf"
@@ -30,12 +31,44 @@ func (oc *OrderController) Get(c *gin.Context) {
 	}
 
 	var orders []models.Order
-	if err := oc.DB.Preload("User").Preload("Items.Product").Where("user_id = ?", user.ID).Find(&orders).Error; err != nil {
+	if err := oc.DB.Preload("User").Preload("Items.Product").Preload("Address").Where("user_id = ?", user.ID).Find(&orders).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load orders"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"orders": orders})
+}
+
+func SendEmail(to string, name string, orderID uint) error {
+	from := os.Getenv("SMTP_EMAIL")
+	password := os.Getenv("SMTP_PASSWORD")
+	if from == "" || password == "" {
+		return fmt.Errorf("SMTP credentials not configured")
+	}
+
+	smtpHost := "smtp.gmail.com"
+	smtpPort := "587"
+
+	message := []byte(
+		"Subject: Order Confirmed - ShopHub 🎉\r\n" +
+			"\r\n" +
+			"Hello " + name + ",\n\n" +
+			"Thank you for your order! 🛍️\n\n" +
+			"Your order with orderID " + fmt.Sprintf("%d", orderID) + " has been successfully placed and is being processed.\n\n" +
+			"We’ll notify you once it’s shipped.\n\n" +
+			"Happy Shopping with ShopHub! ❤️\n\n" +
+			"- Team ShopHub",
+	)
+
+	auth := smtp.PlainAuth("", from, password, smtpHost)
+
+	return smtp.SendMail(
+		smtpHost+":"+smtpPort,
+		auth,
+		from,
+		[]string{to},
+		message,
+	)
 }
 
 func (oc *OrderController) InitiatePayment(c *gin.Context) {
@@ -91,13 +124,27 @@ func (oc *OrderController) InitiatePayment(c *gin.Context) {
 	})
 }
 
+type createOrderRequest struct {
+	AddressID uint `json:"addressId" binding:"required"`
+}
+
 func (oc *OrderController) Create(c *gin.Context) {
+	var req createOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	user := middlewares.CurrentUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
 		return
 	}
-
+	var address models.Address
+	if err := oc.DB.Where("id = ? AND user_id = ?", req.AddressID, user.ID).First(&address).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid address"})
+		return
+	}
 	// Load user's cart items
 	var cartItems []models.CartItem
 	if err := oc.DB.Preload("Product").Where("user_id = ?", user.ID).Find(&cartItems).Error; err != nil {
@@ -157,6 +204,7 @@ func (oc *OrderController) Create(c *gin.Context) {
 	order := models.Order{
 		UserID:          user.ID,
 		Status:          "pending",
+		AddressID:       &req.AddressID,
 		TotalPaise:      totalPaise,
 		RazorpayOrderID: razorpayOrderID,
 	}
@@ -240,10 +288,9 @@ func (oc *OrderController) VerifyPayment(c *gin.Context) {
 	order.RazorpayPaymentID = input.RazorpayPaymentID
 	order.RazorpaySignature = input.RazorpaySignature
 	oc.DB.Save(&order)
-
 	// Clear cart
 	oc.DB.Where("user_id = ?", user.ID).Delete(&models.CartItem{})
-
+	go SendEmail(user.Email, user.Name, order.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "payment verified successfully", "order": order})
 }
 func (oc *OrderController) DownloadInvoice(c *gin.Context) {
